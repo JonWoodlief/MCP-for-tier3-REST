@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HATEOAS Bank Account</title>
+  <style>
+    body { font-family: sans-serif; max-width: 500px; margin: 2em auto; background: #f9f9f9; }
+    .account { background: #fff; padding: 1.5em; border-radius: 8px; box-shadow: 0 2px 8px #0001; }
+    .links { margin-top: 2em; }
+    button { margin: 0.5em 0.5em 0.5em 0; padding: 0.5em 1.2em; font-size: 1em; border-radius: 4px; border: 1px solid #ccc; background: #e0eaff; cursor: pointer; }
+    button:disabled { background: #eee; color: #aaa; }
+    .error { color: #b00; margin-top: 1em; }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <div class="account">
+      <h2>Bank Account</h2>
+      <div id="account-info">
+        Loading...
+      </div>
+      <div class="links" id="links"></div>
+      <div class="error" id="error"></div>
+    </div>
+  </div>
+  <script>
+    const apiBase = 'http://localhost:9001';
+    let lastAccount = null;
+
+    function fetchAccount() {
+      console.log('Fetching account...');
+      document.getElementById('error').textContent = '';
+      fetch(apiBase + '/account')
+        .then(r => r.json())
+        .then(account => {
+          lastAccount = account;
+          renderAccount(account);
+          renderLinks(account._links);
+        })
+        .catch(e => {
+          document.getElementById('account-info').textContent = 'Failed to load account.';
+        });
+    }
+
+    function renderAccount(account) {
+      document.getElementById('account-info').innerHTML = `
+        <strong>ID:</strong> ${account.accountId}<br>
+        <strong>Holder:</strong> ${account.accountHolder}<br>
+        <strong>Balance:</strong> $${account.balance.toFixed(2)} ${account.currency}
+      `;
+    }
+
+    function renderLinks(links) {
+      const linksDiv = document.getElementById('links');
+      linksDiv.innerHTML = '';
+      Object.values(links).forEach(link => {
+        const btn = document.createElement('button');
+        btn.textContent = link.rel.charAt(0).toUpperCase() + link.rel.slice(1);
+        btn.onclick = () => handleLink(link);
+        if (link.rel === 'deposit') {
+          btn.textContent += ' $100';
+        }
+        if (link.rel === 'withdraw') {
+          btn.textContent += ' $100';
+        }
+        linksDiv.appendChild(btn);
+      });
+    }
+
+    function handleLink(link) {
+      document.getElementById('error').textContent = '';
+      if (link.method === 'GET') {
+        fetchAccount();
+      } else if (link.method === 'POST') {
+        let body = null;
+        if (link.rel === 'deposit' || link.rel === 'withdraw') {
+          body = JSON.stringify({ amount: 100 });
+        }
+        fetch(link.href, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body
+        })
+        .then(r => r.json().then(data => ({ status: r.status, data })))
+        .then(res => {
+          if (res.status >= 400) {
+            document.getElementById('error').textContent = res.data.error || 'Error occurred.';
+          } else {
+            lastAccount = res.data;
+            renderAccount(res.data);
+            renderLinks(res.data._links);
+          }
+        })
+        .catch(() => {
+          document.getElementById('error').textContent = 'Request failed.';
+        });
+      }
+    }
+
+    fetchAccount();
+  </script>
+</body>
+</html>

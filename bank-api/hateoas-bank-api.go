@@ -139,7 +139,11 @@ func withdraw(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	fs := http.FileServer(http.Dir("bank-api/static"))
+	http.Handle("/", fs)
+
 	http.HandleFunc("/account", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Printf("%s %s\n", r.Method, r.URL.Path)
 		if r.Method == "GET" {
 			getAccount(w, r)
 		} else {
@@ -147,13 +151,16 @@ func main() {
 		}
 	})
 	http.HandleFunc("/account/deposit", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Printf("%s %s\n", r.Method, r.URL.Path)
 		deposit(w, r)
 	})
 	http.HandleFunc("/account/withdraw", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Printf("%s %s\n", r.Method, r.URL.Path)
 		withdraw(w, r)
 	})
 
 	fmt.Println("HATEOAS Bank API server starting on :9001")
+	fmt.Println("Try: open http://localhost:9001/")
 	fmt.Println("Try: curl http://localhost:9001/account")
 	fmt.Println("Try: curl -X POST -H 'Content-Type: application/json' -d '{\"amount\": 100}' http://localhost:9001/account/deposit")
 
