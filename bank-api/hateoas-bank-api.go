@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 )
 
 type Link struct {
@@ -25,19 +24,13 @@ type Transaction struct {
 	Amount float64 `json:"amount"`
 }
 
-var accounts = map[string]*Account{
-	"acc-123": {
-		AccountID:     "acc-123",
-		AccountHolder: "John Doe",
-		Balance:       1250.75,
-		Currency:      "USD",
-	},
-	"acc-456": {
-		AccountID:     "acc-456",
-		AccountHolder: "Jane Smith",
-		Balance:       -150.25,
-		Currency:      "USD",
-	},
+var balance = 1250.75
+
+var account = &Account{
+	AccountID:     "acc-123",
+	AccountHolder: "John Doe",
+	Balance:       balance,
+	Currency:      "USD",
 }
 
 func addHATEOASLinks(account *Account, baseURL string) {
@@ -45,14 +38,14 @@ func addHATEOASLinks(account *Account, baseURL string) {
 
 	// Self link - always present
 	links["self"] = Link{
-		Href:   fmt.Sprintf("%s/accounts/%s", baseURL, account.AccountID),
+		Href:   fmt.Sprintf("%s/account", baseURL),
 		Method: "GET",
 		Rel:    "self",
 	}
 
 	// Deposit link - always available
 	links["deposit"] = Link{
-		Href:   fmt.Sprintf("%s/accounts/%s/deposit", baseURL, account.AccountID),
+		Href:   fmt.Sprintf("%s/account/deposit", baseURL),
 		Method: "POST",
 		Rel:    "deposit",
 	}
@@ -60,7 +53,7 @@ func addHATEOASLinks(account *Account, baseURL string) {
 	// Withdraw link - only available if balance is positive
 	if account.Balance > 0 {
 		links["withdraw"] = Link{
-			Href:   fmt.Sprintf("%s/accounts/%s/withdraw", baseURL, account.AccountID),
+			Href:   fmt.Sprintf("%s/account/withdraw", baseURL),
 			Method: "POST",
 			Rel:    "withdraw",
 		}
@@ -75,39 +68,16 @@ func getAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accountID := strings.TrimPrefix(r.URL.Path, "/accounts/")
-
-	account, exists := accounts[accountID]
-	if !exists {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-
-	// Create a copy to avoid modifying the original
-	accountCopy := *account
 	baseURL := fmt.Sprintf("http://%s", r.Host)
-	addHATEOASLinks(&accountCopy, baseURL)
+	addHATEOASLinks(account, baseURL)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(accountCopy)
+	json.NewEncoder(w).Encode(account)
 }
 
 func deposit(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) < 3 {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	accountID := parts[2]
-
-	account, exists := accounts[accountID]
-	if !exists {
-		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
@@ -126,12 +96,11 @@ func deposit(w http.ResponseWriter, r *http.Request) {
 	account.Balance += transaction.Amount
 
 	// Return updated account with HATEOAS links
-	accountCopy := *account
 	baseURL := fmt.Sprintf("http://%s", r.Host)
-	addHATEOASLinks(&accountCopy, baseURL)
+	addHATEOASLinks(account, baseURL)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(accountCopy)
+	json.NewEncoder(w).Encode(account)
 }
 
 func withdraw(w http.ResponseWriter, r *http.Request) {
@@ -140,21 +109,8 @@ func withdraw(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) < 3 {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	accountID := parts[2]
-
-	account, exists := accounts[accountID]
-	if !exists {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-
 	// Check if withdraw is allowed based on current balance
-	if account.Balance <= 0 {
+	if balance <= 0 {
 		w.WriteHeader(http.StatusForbidden)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Withdrawal not allowed with negative balance"})
 		return
@@ -175,31 +131,31 @@ func withdraw(w http.ResponseWriter, r *http.Request) {
 	account.Balance -= transaction.Amount
 
 	// Return updated account with HATEOAS links
-	accountCopy := *account
 	baseURL := fmt.Sprintf("http://%s", r.Host)
-	addHATEOASLinks(&accountCopy, baseURL)
+	addHATEOASLinks(account, baseURL)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(accountCopy)
+	json.NewEncoder(w).Encode(account)
 }
 
 func main() {
-	http.HandleFunc("/accounts/", func(w http.ResponseWriter, r *http.Request) {
-		path := r.URL.Path
-
-		if strings.HasSuffix(path, "/deposit") {
-			deposit(w, r)
-		} else if strings.HasSuffix(path, "/withdraw") {
-			withdraw(w, r)
-		} else {
+	http.HandleFunc("/account", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
 			getAccount(w, r)
+		} else {
+			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
+	})
+	http.HandleFunc("/account/deposit", func(w http.ResponseWriter, r *http.Request) {
+		deposit(w, r)
+	})
+	http.HandleFunc("/account/withdraw", func(w http.ResponseWriter, r *http.Request) {
+		withdraw(w, r)
 	})
 
 	fmt.Println("HATEOAS Bank API server starting on :9001")
-	fmt.Println("Try: curl http://localhost:9001/accounts/acc-123")
-	fmt.Println("Try: curl http://localhost:9001/accounts/acc-456")
-	fmt.Println("Try: curl -X POST -H 'Content-Type: application/json' -d '{\"amount\": 100}' http://localhost:9001/accounts/acc-456/deposit")
+	fmt.Println("Try: curl http://localhost:9001/account")
+	fmt.Println("Try: curl -X POST -H 'Content-Type: application/json' -d '{\"amount\": 100}' http://localhost:9001/account/deposit")
 
 	err := http.ListenAndServe(":9001", http.DefaultServeMux)
 	if err != nil {
