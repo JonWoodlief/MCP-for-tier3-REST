@@ -1,0 +1,10 @@
+
+[project]
+name = "mcp-server"
+version = "0.1.0"
+description = "HATEOAS MCP Server"
+requires-python = ">=3.10"
+dependencies = [
+    "httpx",
+    "mcp==1.0.0"
+]
