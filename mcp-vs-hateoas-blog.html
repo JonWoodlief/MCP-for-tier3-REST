@@ -178,5 +178,85 @@
     <p>While HATEOAS failed because human developers don't need runtime discoverability- MCP succeeds because AI needs it</p>
 
     <p>HATEOAS was ahead of it's time. What was once an academic consideration is now a practical one. HATEOAS may find new life as a model that facilitates AI-driven interactions with APIs.</p>
+
+    <h2>Dynamic Integration: MCP + HATEOAS in Practice</h2>
+    
+    <p>The real power emerges when we combine MCP's discovery capabilities with HATEOAS's state-driven navigation. My implementation demonstrates this by creating an MCP server that dynamically adapts its tool offerings based on the current state of a HATEOAS API.</p>
+    
+    <div class="code-block">
+// MCP server discovers available actions from HATEOAS API
+async discover_links() {
+    const response = await this.client.get('/account');
+    const data = response.json();
+    
+    // Update available tools based on current state
+    this.cached_links = data._links;
+    this.cached_tools = this._generate_tools_from_links();
+    
+    // Notify AI agent that tools have changed
+    if (tools_changed) {
+        await this._send_tool_refresh_notification();
+    }
+}
+
+// Generate MCP tools from HATEOAS links
+_generate_tools_from_links() {
+    const tools = [];
+    for (const [linkName, linkData] of Object.entries(this.cached_links)) {
+        tools.push({
+            name: linkName,
+            description: `Execute ${linkData.rel} (${linkData.method})`,
+            inputSchema: linkData.method === 'POST' ? {
+                type: 'object',
+                properties: { amount: { type: 'number' } },
+                required: ['amount']
+            } : {}
+        });
+    }
+    return tools;
+}
+    </div>
+    
+    <p>This creates a feedback loop where:</p>
+    <ul>
+        <li>The HATEOAS API exposes different actions based on account state</li>
+        <li>The MCP server dynamically updates its tool list</li>
+        <li>The AI agent receives notifications about available actions</li>
+        <li>Each action potentially changes the state, cycling back to step 1</li>
+    </ul>
+    
+    <div class="code-block">
+// Example: Account with positive balance
+GET /account
+{
+  "balance": 1250.75,
+  "_links": {
+    "self": { "href": "/account" },
+    "deposit": { "href": "/account/deposit", "method": "POST" },
+    "withdraw": { "href": "/account/withdraw", "method": "POST" }
+  }
+}
+
+// MCP tools available: ["self", "deposit", "withdraw"]
+
+// After overdraft
+POST /account/withdraw {"amount": 1300}
+{
+  "balance": -49.25,
+  "_links": {
+    "self": { "href": "/account" },
+    "deposit": { "href": "/account/deposit", "method": "POST" }
+  }
+}
+
+// MCP tools available: ["self", "deposit"]
+// AI agent automatically loses withdraw capability
+    </div>
+    
+    <p>This architecture enables AI agents to understand not just what actions exist, but <span class="highlight">when they're contextually appropriate</span>. The agent doesn't need to understand business rules - it simply adapts to what the API makes available.</p>
+    
+    <p>The implementation in <span class="inline-code">mcp-server.py</span> shows how this works in practice: the MCP server polls the HATEOAS API, regenerates its tool list based on available links, and notifies connected AI agents when capabilities change. This creates a truly dynamic, state-aware AI-API interaction model.</p>
+    
+    <p>You can find the complete implementation and examples at <a href="https://github.com/JonWoodlief/MCP-for-tier3-REST" target="_blank" rel="noopener">https://github.com/JonWoodlief/MCP-for-tier3-REST</a>.</p>
 </body>
 </html>
