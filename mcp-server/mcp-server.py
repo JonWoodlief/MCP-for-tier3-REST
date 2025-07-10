@@ -181,10 +181,6 @@ async def handle_list_tools() -> List[Tool]:
         if not hateoas_client.cached_tools:
             await hateoas_client.discover_links()
         
-        # Log the dictionary representation for confirmation
-        log_dict = {"tools": [t.model_dump(exclude_none=True) for t in hateoas_client.cached_tools]}
-        logger.info(f"EXACT SCHEMA BEING RETURNED: {log_dict}")
-        
         return hateoas_client.cached_tools
     except Exception as e:
         logger.error(f"Error in list_tools: {e}")
@@ -193,11 +189,8 @@ async def handle_list_tools() -> List[Tool]:
 @server.call_tool()
 async def handle_call_tool(name: str, arguments: Optional[dict] = None):
     """Execute a tool"""
-    logger.info(f"call_tool handler called with name: {name}, arguments: {arguments}")
-    
     try:
         result = await hateoas_client.execute_link(name, arguments or {})
-        logger.info(f"Tool execution completed for: {name}")
         return result
     except Exception as e:
         logger.error(f"Error calling tool {name}: {e}")
