@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Sequence
 from urllib.parse import urljoin
 
 import httpx
-from mcp.server import Server
+from mcp.server import Server, NotificationOptions, request_ctx
 from mcp.server.stdio import stdio_server
 from mcp.server.models import InitializationOptions
 from mcp.types import (
@@ -34,8 +34,14 @@ class HATEOASClient:
             response = await self.client.get(f"{self.api_url}/account")
             if response.status_code == 200:
                 data = response.json()
+                old_links = self.cached_links.copy()
                 self.cached_links = data.get("_links", {})
                 self.cached_tools = self._generate_tools_from_links()
+                
+                # Send notification if tools have changed
+                if old_links != self.cached_links:
+                    await self._send_tool_refresh_notification()
+                
                 return data
             else:
                 logger.error(f"Failed to discover links: {response.status_code}")
@@ -79,6 +85,17 @@ class HATEOASClient:
                 logger.error(f"Error creating tool {link_name}: {e}")
         
         return tools
+    
+    async def _send_tool_refresh_notification(self):
+        """Send a tool list changed notification to the client"""
+        try:
+            # Get the current request context to access the session
+            ctx = request_ctx.get()
+            if ctx and ctx.session:
+                await ctx.session.send_tool_list_changed()
+                logger.info("Sent tool list changed notification")
+        except Exception as e:
+            logger.warning(f"Could not send tool refresh notification: {e}")
     
     async def execute_link(self, link_name: str, arguments: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Execute a HATEOAS link with the given arguments"""
@@ -129,8 +146,13 @@ class HATEOASClient:
                     
                     # Update cached links if the response contains them
                     if "_links" in response_data:
+                        old_links = self.cached_links.copy()
                         self.cached_links = response_data["_links"]
                         self.cached_tools = self._generate_tools_from_links()
+                        
+                        # Send notification if tools have changed
+                        if old_links != self.cached_links:
+                            await self._send_tool_refresh_notification()
                     
                     # Format the response
                     formatted_response = json.dumps(response_data, indent=2)
@@ -183,12 +205,16 @@ async def handle_call_tool(name: str, arguments: Optional[dict] = None):
 
 async def main():
     """Main entry point"""
+    # Enable tool change notifications
+    notification_options = NotificationOptions(tools_changed=True)
+    
     init_options = InitializationOptions(
         server_name="hateoas-mcp",
         server_version="1.0.0",
-        capabilities={
-            "tools": {}
-        }
+        capabilities=server.get_capabilities(
+            notification_options=notification_options,
+            experimental_capabilities={}
+        )
     )
     
     try:
